@@ -24,7 +24,7 @@ use bevy::{
         render_resource::{binding_types::uniform_buffer, *},
         renderer::{RenderDevice, RenderQueue},
         view::{ExtractedView, RenderVisibleEntities, ViewUniformOffset},
-        Render, RenderApp, RenderSet,
+        Render, RenderApp, RenderSystems,
     },
 };
 use std::fmt::Debug;
@@ -124,6 +124,7 @@ impl RenderAsset for GpuPolylineMaterial {
         polyline_material: Self::SourceAsset,
         _: AssetId<Self::SourceAsset>,
         (device, queue, polyline_pipeline): &mut bevy::ecs::system::SystemParamItem<Self::Param>,
+        _: Option<&Self>,
     ) -> Result<Self, PrepareAssetError<Self::SourceAsset>> {
         let value = PolylineMaterialUniform {
             width: polyline_material.width,
@@ -178,7 +179,10 @@ impl Plugin for PolylineMaterialPlugin {
                 .add_render_command::<AlphaMask3d, DrawPolylineMaterial>()
                 .init_resource::<PolylineMaterialPipeline>()
                 .init_resource::<SpecializedRenderPipelines<PolylineMaterialPipeline>>()
-                .add_systems(Render, queue_material_polylines.in_set(RenderSet::Queue));
+                .add_systems(
+                    Render,
+                    queue_material_polylines.in_set(RenderSystems::Queue),
+                );
         }
     }
 }
@@ -237,8 +241,8 @@ impl<const I: usize, P: PhaseItem> RenderCommand<P> for SetPolylineViewBindGroup
     #[inline]
     fn render<'w>(
         _item: &P,
-        (view_uniform, mesh_view_bind_group): ROQueryItem<'w, Self::ViewQuery>,
-        _entity: Option<ROQueryItem<'w, Self::ItemQuery>>,
+        (view_uniform, mesh_view_bind_group): ROQueryItem<'w, '_, Self::ViewQuery>,
+        _entity: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         _param: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
@@ -255,8 +259,8 @@ impl<const I: usize, P: PhaseItem> RenderCommand<P> for SetMaterialBindGroup<I> 
 
     fn render<'w>(
         _item: &P,
-        _view: ROQueryItem<'w, Self::ViewQuery>,
-        material_handle: Option<ROQueryItem<'w, Self::ItemQuery>>,
+        _view: ROQueryItem<'w, '_, Self::ViewQuery>,
+        material_handle: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         materials: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
@@ -297,7 +301,7 @@ pub fn queue_material_polylines(
         .id::<DrawPolylineMaterial>();
 
     for (view, visible_entities, msaa) in &views {
-        let inverse_view_matrix = view.world_from_view.compute_matrix().inverse();
+        let inverse_view_matrix = view.world_from_view.to_matrix().inverse();
         let inverse_view_row_2 = inverse_view_matrix.row(2);
 
         let mut polyline_key = PolylinePipelineKey::from_msaa_samples(msaa.samples());

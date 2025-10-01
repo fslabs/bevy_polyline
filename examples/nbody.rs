@@ -1,7 +1,7 @@
 use std::f32::consts::PI;
 
 use bevy::{
-    core_pipeline::{bloom::Bloom, tonemapping::Tonemapping},
+    core_pipeline::tonemapping::Tonemapping,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     math::Vec3A,
     prelude::*,
@@ -79,13 +79,9 @@ fn setup(
     // camera
     commands.spawn((
         Camera3d::default(),
-        Camera {
-            hdr: true,
-            ..default()
-        },
+        Camera { ..default() },
         Msaa::Sample4,
         Tonemapping::TonyMcMapface,
-        Bloom::default(),
         Rotates,
     ));
 }

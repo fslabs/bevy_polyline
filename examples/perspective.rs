@@ -33,10 +33,7 @@ fn setup(
         Camera3d::default(),
         Msaa::Sample4,
         Transform::from_xyz(0.0, 0.0, 2.0).looking_at(Vec3::ZERO, Vec3::Y),
-        Camera {
-            hdr: true,
-            ..default()
-        },
+        Camera::default(),
     ));
 }
 

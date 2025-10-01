@@ -1,5 +1,6 @@
 use crate::material::PolylineMaterialHandle;
 use bevy::{
+    camera::visibility::{add_visibility_class, VisibilityClass},
     ecs::{
         query::ROQueryItem,
         system::{
@@ -7,6 +8,7 @@ use bevy::{
             SystemParamItem,
         },
     },
+    mesh::VertexBufferLayout,
     prelude::*,
     reflect::TypePath,
     render::{
@@ -16,8 +18,8 @@ use bevy::{
         render_resource::{binding_types::uniform_buffer, *},
         renderer::RenderDevice,
         sync_world::{RenderEntity, SyncToRenderWorld},
-        view::{self, ViewUniform, ViewUniforms, VisibilityClass},
-        Extract, Render, RenderApp, RenderSet,
+        view::{ViewUniform, ViewUniforms},
+        Extract, Render, RenderApp, RenderSystems,
     },
 };
 
@@ -43,8 +45,8 @@ impl Plugin for PolylineRenderPlugin {
             .add_systems(
                 Render,
                 (
-                    prepare_polyline_bind_group.in_set(RenderSet::PrepareBindGroups),
-                    prepare_polyline_view_bind_groups.in_set(RenderSet::PrepareBindGroups),
+                    prepare_polyline_bind_group.in_set(RenderSystems::PrepareBindGroups),
+                    prepare_polyline_view_bind_groups.in_set(RenderSystems::PrepareBindGroups),
                 ),
             );
     }
@@ -70,7 +72,7 @@ pub struct Polyline {
 
 #[derive(Debug, Clone, Default, Component)]
 #[require(SyncToRenderWorld, VisibilityClass)]
-#[component(on_add = view::add_visibility_class::<PolylineHandle>)]
+#[component(on_add = add_visibility_class::<PolylineHandle>)]
 pub struct PolylineHandle(pub Handle<Polyline>);
 
 impl RenderAsset for GpuPolyline {
@@ -82,6 +84,7 @@ impl RenderAsset for GpuPolyline {
         polyline: Self::SourceAsset,
         _: AssetId<Self::SourceAsset>,
         render_device: &mut bevy::ecs::system::SystemParamItem<Self::Param>,
+        _: Option<&Self>,
     ) -> Result<Self, PrepareAssetError<Self::SourceAsset>> {
         let vertex_buffer_data = bytemuck::cast_slice(polyline.vertices.as_slice());
         let vertex_buffer = render_device.create_buffer_with_data(&BufferInitDescriptor {
@@ -127,11 +130,11 @@ pub fn extract_polylines(
         if !inherited_visibility.get() || !view_visibility.get() {
             continue;
         }
-        let transform = transform.compute_matrix();
+        let transform = transform.to_matrix();
         values.push((
             entity,
             (
-                PolylineHandle(handle.0.clone_weak()),
+                PolylineHandle(handle.0.clone()),
                 PolylineUniform { transform },
             ),
         ));
@@ -221,7 +224,7 @@ impl SpecializedRenderPipeline for PolylinePipeline {
         RenderPipelineDescriptor {
             vertex: VertexState {
                 shader: self.shader.clone(),
-                entry_point: "vertex".into(),
+                entry_point: Some("vertex".into()),
                 shader_defs: shader_defs.clone(),
                 buffers: vec![vertex_layout.clone(), {
                     vertex_layout.attributes[0].shader_location = 1;
@@ -231,7 +234,7 @@ impl SpecializedRenderPipeline for PolylinePipeline {
             fragment: Some(FragmentState {
                 shader: self.shader.clone(),
                 shader_defs,
-                entry_point: "fragment".into(),
+                entry_point: Some("fragment".into()),
                 targets: vec![Some(ColorTargetState {
                     format,
                     blend,
@@ -370,8 +373,8 @@ impl<const I: usize, P: PhaseItem> RenderCommand<P> for SetPolylineBindGroup<I> 
     #[inline]
     fn render<'w>(
         _item: &P,
-        _view: ROQueryItem<'w, Self::ViewQuery>,
-        polyline_index: Option<ROQueryItem<'w, Self::ItemQuery>>,
+        _view: ROQueryItem<'w, '_, Self::ViewQuery>,
+        polyline_index: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         bind_group: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
@@ -392,8 +395,8 @@ impl<P: PhaseItem> RenderCommand<P> for DrawPolyline {
     #[inline]
     fn render<'w>(
         _item: &P,
-        _view: ROQueryItem<'w, Self::ViewQuery>,
-        pl_handle: Option<ROQueryItem<'w, Self::ItemQuery>>,
+        _view: ROQueryItem<'w, '_, Self::ViewQuery>,
+        pl_handle: Option<ROQueryItem<'w, '_, Self::ItemQuery>>,
         polylines: SystemParamItem<'w, '_, Self::Param>,
         pass: &mut TrackedRenderPass<'w>,
     ) -> RenderCommandResult {
