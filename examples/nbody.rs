@@ -79,7 +79,7 @@ fn setup(
     // camera
     commands.spawn((
         Camera3d::default(),
-        Camera { ..default() },
+        Camera::default(),
         Msaa::Sample4,
         Tonemapping::TonyMcMapface,
         Rotates,
