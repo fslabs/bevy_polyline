@@ -1,14 +1,12 @@
 use std::f32::consts::PI;
 
 use bevy::{
-    core_pipeline::tonemapping::Tonemapping,
+    core_pipeline::{bloom::Bloom, tonemapping::Tonemapping},
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     math::Vec3A,
     prelude::*,
-    render::view::Hdr,
 };
 use bevy_polyline::prelude::*;
-use bevy_post_process::bloom::Bloom;
 
 use lazy_static::*;
 use rand::{prelude::*, Rng};
@@ -81,8 +79,10 @@ fn setup(
     // camera
     commands.spawn((
         Camera3d::default(),
-        Camera::default(),
-        Hdr,
+        Camera {
+            hdr: true,
+            ..default()
+        },
         Msaa::Sample4,
         Tonemapping::TonyMcMapface,
         Bloom::default(),
