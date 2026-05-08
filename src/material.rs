@@ -9,7 +9,7 @@ use bevy::{
         prepass::{OpaqueNoLightmap3dBatchSetKey, OpaqueNoLightmap3dBinKey},
     },
     ecs::{
-        component::Tick,
+        change_detection::Tick,
         query::ROQueryItem,
         system::{
             lifetimeless::{Read, SRes},
@@ -76,8 +76,8 @@ impl Default for PolylineMaterial {
 }
 
 impl PolylineMaterial {
-    pub fn bind_group_layout(render_device: &RenderDevice) -> BindGroupLayout {
-        render_device.create_bind_group_layout(
+    pub fn bind_group_layout() -> BindGroupLayoutDescriptor {
+        BindGroupLayoutDescriptor::new(
             "polyline_material_layout",
             &BindGroupLayoutEntries::single(
                 ShaderStages::VERTEX,
@@ -118,12 +118,15 @@ impl RenderAsset for GpuPolylineMaterial {
         SRes<RenderDevice>,
         SRes<RenderQueue>,
         SRes<PolylineMaterialPipeline>,
+        SRes<PipelineCache>,
     );
 
     fn prepare_asset(
         polyline_material: Self::SourceAsset,
         _: AssetId<Self::SourceAsset>,
-        (device, queue, polyline_pipeline): &mut bevy::ecs::system::SystemParamItem<Self::Param>,
+        (device, queue, polyline_pipeline, pipeline_cache): &mut bevy::ecs::system::SystemParamItem<
+            Self::Param,
+        >,
         _: Option<&Self>,
     ) -> Result<Self, PrepareAssetError<Self::SourceAsset>> {
         let value = PolylineMaterialUniform {
@@ -141,7 +144,7 @@ impl RenderAsset for GpuPolylineMaterial {
 
         let bind_group = device.create_bind_group(
             Some("polyline_material_bind_group"),
-            &polyline_pipeline.material_layout,
+            &pipeline_cache.get_bind_group_layout(&polyline_pipeline.material_layout),
             &BindGroupEntries::single(buffer_binding),
         );
 
@@ -190,13 +193,12 @@ impl Plugin for PolylineMaterialPlugin {
 #[derive(Resource)]
 pub struct PolylineMaterialPipeline {
     pub polyline_pipeline: PolylinePipeline,
-    pub material_layout: BindGroupLayout,
+    pub material_layout: BindGroupLayoutDescriptor,
 }
 
 impl FromWorld for PolylineMaterialPipeline {
     fn from_world(world: &mut World) -> Self {
-        let render_device = world.get_resource::<RenderDevice>().unwrap();
-        let material_layout = PolylineMaterial::bind_group_layout(render_device);
+        let material_layout = PolylineMaterial::bind_group_layout();
         let pipeline = world.get_resource::<PolylinePipeline>().unwrap();
         PolylineMaterialPipeline {
             polyline_pipeline: pipeline.to_owned(),

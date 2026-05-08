@@ -145,15 +145,14 @@ pub fn extract_polylines(
 
 #[derive(Clone, Resource)]
 pub struct PolylinePipeline {
-    pub view_layout: BindGroupLayout,
-    pub polyline_layout: BindGroupLayout,
+    pub view_layout: BindGroupLayoutDescriptor,
+    pub polyline_layout: BindGroupLayoutDescriptor,
     pub shader: Handle<Shader>,
 }
 
 impl FromWorld for PolylinePipeline {
-    fn from_world(world: &mut World) -> Self {
-        let render_device = world.get_resource::<RenderDevice>().unwrap();
-        let view_layout = render_device.create_bind_group_layout(
+    fn from_world(_: &mut World) -> Self {
+        let view_layout = BindGroupLayoutDescriptor::new(
             "polyline_view_layout",
             &BindGroupLayoutEntries::single(
                 ShaderStages::VERTEX,
@@ -161,7 +160,7 @@ impl FromWorld for PolylinePipeline {
             ),
         );
 
-        let polyline_layout = render_device.create_bind_group_layout(
+        let polyline_layout = BindGroupLayoutDescriptor::new(
             "polyline_layout",
             &BindGroupLayoutEntries::single(
                 ShaderStages::VERTEX,
@@ -326,12 +325,13 @@ pub fn prepare_polyline_bind_group(
     polyline_pipeline: Res<PolylinePipeline>,
     render_device: Res<RenderDevice>,
     polyline_uniforms: Res<ComponentUniforms<PolylineUniform>>,
+    pipeline_cache: Res<PipelineCache>,
 ) {
     if let Some(binding) = polyline_uniforms.uniforms().binding() {
         commands.insert_resource(PolylineBindGroup {
             value: render_device.create_bind_group(
                 Some("polyline_bind_group"),
-                &polyline_pipeline.polyline_layout,
+                &pipeline_cache.get_bind_group_layout(&polyline_pipeline.polyline_layout),
                 &BindGroupEntries::single(binding),
             ),
         });
@@ -350,11 +350,12 @@ pub fn prepare_polyline_view_bind_groups(
     polyline_pipeline: Res<PolylinePipeline>,
     view_uniforms: Res<ViewUniforms>,
     views: Query<Entity, With<bevy::render::view::ExtractedView>>,
+    pipeline_cache: Res<PipelineCache>,
 ) {
     for entity in views.iter() {
         let view_bind_group = render_device.create_bind_group(
             Some("polyline_view_bind_group"),
-            &polyline_pipeline.view_layout,
+            &pipeline_cache.get_bind_group_layout(&polyline_pipeline.view_layout),
             &BindGroupEntries::single(&view_uniforms.uniforms),
         );
 

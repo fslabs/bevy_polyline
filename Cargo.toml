@@ -18,19 +18,19 @@ authors = [
 
 [dependencies]
 bitflags = "2.3"
-bevy = { version = "0.17", default-features = false, features = [
+bevy = { version = "0.18", default-features = false, features = [
     "bevy_core_pipeline",
     "bevy_render",
     "bevy_asset",
 ] }
-bevy_post_process = "0.17"
+bevy_post_process = "0.18"
 bytemuck = "1.16.1"
 
 [dev-dependencies]
 lazy_static = "1.4.0"
 rand = "0.8.4"
 ringbuffer = "0.15"
-bevy = { version = "0.17", default-features = false, features = [
+bevy = { version = "0.18", default-features = false, features = [
     "bevy_window",
     "bevy_winit",
     "bevy_pbr",
