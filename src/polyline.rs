@@ -2,7 +2,7 @@ use crate::material::PolylineMaterialHandle;
 use bevy::{
     camera::{self, visibility::VisibilityClass},
     ecs::{
-        query::ROQueryItem,
+        query::{QueryItem, ROQueryItem},
         system::{
             lifetimeless::{Read, SRes},
             SystemParamItem,
@@ -12,11 +12,15 @@ use bevy::{
     prelude::*,
     reflect::TypePath,
     render::{
-        extract_component::{ComponentUniforms, DynamicUniformIndex, UniformComponentPlugin},
+        extract_component::{
+            ComponentUniforms, DynamicUniformIndex, ExtractComponent, ExtractComponentPlugin,
+            UniformComponentPlugin,
+        },
         render_asset::{PrepareAssetError, RenderAsset, RenderAssetPlugin, RenderAssets},
         render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
         render_resource::{binding_types::uniform_buffer, *},
         renderer::RenderDevice,
+        sync_component::SyncComponent,
         sync_world::{RenderEntity, SyncToRenderWorld},
         view::{self, texture_format_from_code, texture_format_to_code, ViewUniform, ViewUniforms},
         Extract, Render, RenderApp, RenderSystems,
@@ -35,7 +39,10 @@ impl Plugin for PolylineBasePlugin {
 pub struct PolylineRenderPlugin;
 impl Plugin for PolylineRenderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(UniformComponentPlugin::<PolylineUniform>::default());
+        app.add_plugins((
+            ExtractComponentPlugin::<PolylineUniform>::default(),
+            UniformComponentPlugin::<PolylineUniform>::default(),
+        ));
     }
 
     fn finish(&self, app: &mut App) {
@@ -105,11 +112,36 @@ pub struct PolylineUniform {
     pub transform: Mat4,
 }
 
+impl SyncComponent for PolylineUniform {
+    type Target = Self;
+}
+
 /// The GPU-representation of a [`Polyline`]
 #[derive(Debug, Clone)]
 pub struct GpuPolyline {
     pub vertex_buffer: Buffer,
     pub vertex_count: u32,
+}
+
+impl ExtractComponent for PolylineUniform {
+    type QueryData = (
+        &'static GlobalTransform,
+        &'static InheritedVisibility,
+        &'static ViewVisibility,
+    );
+    type QueryFilter = With<PolylineHandle>;
+    type Out = PolylineUniform;
+
+    fn extract_component(
+        (transform, inherited_visibility, view_visibility): QueryItem<'_, '_, Self::QueryData>,
+    ) -> Option<Self::Out> {
+        if !inherited_visibility.get() || !view_visibility.get() {
+            return None;
+        }
+        Some(PolylineUniform {
+            transform: transform.to_matrix(),
+        })
+    }
 }
 
 pub fn extract_polylines(
@@ -120,23 +152,19 @@ pub fn extract_polylines(
             RenderEntity,
             &InheritedVisibility,
             &ViewVisibility,
-            &GlobalTransform,
             &PolylineHandle,
         )>,
     >,
 ) {
     let mut values = Vec::with_capacity(*previous_len);
-    for (entity, inherited_visibility, view_visibility, transform, handle) in query.iter() {
+    for (entity, inherited_visibility, view_visibility, handle) in query.iter() {
         if !inherited_visibility.get() || !view_visibility.get() {
             continue;
         }
-        let transform = transform.to_matrix();
         values.push((
             entity,
-            (
-                PolylineHandle(handle.0.clone()),
-                PolylineUniform { transform },
-            ),
+            (PolylineHandle(handle.0.clone()),),
+            // PolylineUniform is now handled by ExtractComponentPlugin
         ));
     }
     *previous_len = values.len();
