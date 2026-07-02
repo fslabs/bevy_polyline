@@ -78,7 +78,7 @@ pub struct Polyline {
 }
 
 #[derive(Debug, Clone, Default, Component)]
-#[require(SyncToRenderWorld, VisibilityClass)]
+#[require(SyncToRenderWorld, VisibilityClass, Transform, Visibility)]
 #[component(on_add = camera::visibility::add_visibility_class::<PolylineHandle>)]
 pub struct PolylineHandle(pub Handle<Polyline>);
 
