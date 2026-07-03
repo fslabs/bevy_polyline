@@ -12,6 +12,7 @@ use bevy::{
     prelude::*,
     reflect::TypePath,
     render::{
+        camera::PendingQueues,
         extract_component::{
             ComponentUniforms, DynamicUniformIndex, ExtractComponent, ExtractComponentPlugin,
             UniformComponentPlugin,
@@ -47,6 +48,7 @@ impl Plugin for PolylineRenderPlugin {
 
     fn finish(&self, app: &mut App) {
         app.sub_app_mut(RenderApp)
+            .init_resource::<PendingPolylineQueues>()
             .init_resource::<PolylinePipeline>()
             .add_systems(ExtractSchedule, extract_polylines)
             .add_systems(
@@ -170,6 +172,9 @@ pub fn extract_polylines(
     *previous_len = values.len();
     commands.try_insert_batch(values);
 }
+
+#[derive(Default, Deref, DerefMut, Resource)]
+pub struct PendingPolylineQueues(pub PendingQueues);
 
 #[derive(Clone, Resource)]
 pub struct PolylinePipeline {
