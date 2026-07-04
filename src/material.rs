@@ -353,7 +353,10 @@ pub fn queue_material_polylines(
                 continue;
             };
             let mut polyline_key = base_polyline_key; // Make sure polylines don't share alpha or perspective settings
-            if material.alpha_mode == AlphaMode::Blend {
+            if matches!(
+                material.alpha_mode,
+                AlphaMode::Blend | AlphaMode::Premultiplied | AlphaMode::Add | AlphaMode::Multiply
+            ) {
                 polyline_key |= PolylinePipelineKey::TRANSPARENT_MAIN_PASS
             }
             if material.perspective {
