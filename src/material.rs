@@ -409,8 +409,7 @@ pub fn queue_material_polylines(
                     let polyline_z = inverse_view_row_2.dot(polyline_uniform.transform.col(3));
                     transparent_phase.add_retained(Transparent3d {
                         sorting_info: TransparentSortingInfo3d::Sorted {
-                            mesh_center: (inverse_view_matrix * polyline_uniform.transform.col(3))
-                                .truncate(),
+                            mesh_center: polyline_uniform.transform.col(3).truncate(),
                             depth_bias: 0.0,
                         },
                         entity: (*visible_entity, *visible_main_entity),
