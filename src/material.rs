@@ -362,14 +362,6 @@ pub fn queue_material_polylines(
             let pipeline_id =
                 pipelines.specialize(&pipeline_cache, &material_pipeline, polyline_key);
 
-            let (Some(opaque_phase), Some(alpha_mask_phase), Some(transparent_phase)) = (
-                opaque_phases.get_mut(&view.retained_view_entity),
-                alpha_mask_phases.get_mut(&view.retained_view_entity),
-                transparent_phases.get_mut(&view.retained_view_entity),
-            ) else {
-                continue;
-            };
-
             match material.alpha_mode {
                 AlphaMode::Opaque => {
                     opaque_phase.add(
