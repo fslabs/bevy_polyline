@@ -404,7 +404,7 @@ pub fn queue_material_polylines(
                     // NOTE: row 2 of the inverse view matrix dotted with column 3 of the model matrix
                     // gives the z component of translation of the mesh in view space
                     let polyline_z = inverse_view_row_2.dot(polyline_uniform.transform.col(3));
-                    transparent_phase.add_transient(Transparent3d {
+                    transparent_phase.add_retained(Transparent3d {
                         sorting_info: TransparentSortingInfo3d::Sorted {
                             mesh_center: (inverse_view_matrix * polyline_uniform.transform.col(3))
                                 .truncate(),
