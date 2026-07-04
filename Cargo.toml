@@ -23,7 +23,6 @@ bevy = { version = "0.19", default-features = false, features = [
     "bevy_render",
     "bevy_asset",
 ] }
-bevy_post_process = "0.19"
 bytemuck = "1.16.1"
 
 [dev-dependencies]
@@ -39,3 +38,4 @@ bevy = { version = "0.19", default-features = false, features = [
     "ktx2",
     "zstd_rust",
 ] }
+bevy_post_process = "0.19"
