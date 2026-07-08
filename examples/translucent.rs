@@ -1,4 +1,4 @@
-use bevy::{camera::Hdr, color::palettes::css::RED, prelude::*};
+use bevy::{camera::Hdr, prelude::*};
 use bevy_polyline::prelude::*;
 
 fn main() {
@@ -16,11 +16,24 @@ fn setup(
 ) {
     commands.spawn(PolylineBundle {
         polyline: PolylineHandle(polylines.add(Polyline {
-            vertices: vec![-Vec3::ONE, Vec3::ONE],
+            vertices: vec![Vec3::new(-1.0, -1.0, 0.0), Vec3::new(1.0, 1.0, 0.0)],
         })),
         material: PolylineMaterialHandle(polyline_materials.add(PolylineMaterial {
-            width: 10.0,
-            color: RED.into(),
+            width: 100.0,
+            color: LinearRgba::new(1.0, 0.0, 0.0, 1.0),
+            perspective: false,
+            ..default()
+        })),
+        ..default()
+    });
+
+    commands.spawn(PolylineBundle {
+        polyline: PolylineHandle(polylines.add(Polyline {
+            vertices: vec![Vec3::new(-1.0, 1.0, 0.1), Vec3::new(1.0, -1.0, 0.1)],
+        })),
+        material: PolylineMaterialHandle(polyline_materials.add(PolylineMaterial {
+            width: 100.0,
+            color: LinearRgba::new(0.0, 1.0, 0.0, 0.5),
             perspective: false,
             ..default()
         })),

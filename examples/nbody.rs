@@ -1,17 +1,17 @@
 use std::f32::consts::PI;
 
 use bevy::{
+    camera::Hdr,
     core_pipeline::tonemapping::Tonemapping,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     math::Vec3A,
     prelude::*,
-    render::view::Hdr,
 };
 use bevy_polyline::prelude::*;
 use bevy_post_process::bloom::Bloom;
 
 use lazy_static::*;
-use rand::{prelude::*, Rng};
+use rand::prelude::*;
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
 
 const NUM_BODIES: usize = 512;
@@ -44,14 +44,14 @@ fn setup(
 ) {
     let mut rng = StdRng::seed_from_u64(0);
     for _index in 0..NUM_BODIES {
-        let r = rng.gen_range(2f32..800f32);
-        let theta = rng.gen_range(0f32..2.0 * PI);
+        let r = rng.random_range(2f32..800f32);
+        let theta = rng.random_range(0f32..2.0 * PI);
         let position = Vec3A::new(
             r * f32::cos(theta),
-            rng.gen_range(-500f32..500f32),
+            rng.random_range(-500f32..500f32),
             r * f32::sin(theta),
         );
-        let size = rng.gen_range(50f32..1000f32);
+        let size = rng.random_range(50f32..1000f32);
         commands.spawn((
             Body {
                 mass: size,
@@ -67,8 +67,12 @@ fn setup(
                 material: PolylineMaterialHandle(
                     polyline_materials.add(PolylineMaterial {
                         width: (size * 0.1).powf(1.8),
-                        color: Color::hsl(rng.gen_range(0.0..360.0), 1.0, rng.gen_range(1.2..3.0))
-                            .to_linear(),
+                        color: Color::hsl(
+                            rng.random_range(0.0..360.0),
+                            1.0,
+                            rng.random_range(1.2..3.0),
+                        )
+                        .to_linear(),
                         perspective: true,
                         ..Default::default()
                     }),
@@ -217,7 +221,7 @@ fn update_trails(
             };
             let gt_min_angle = last_vec.dot(last_last_vec) > MINIMUM_ANGLE;
             if gt_min_angle {
-                trail.0.push(body.position);
+                trail.0.enqueue(body.position);
                 polylines.get_mut(&polyline.0).unwrap().vertices =
                     trail.0.iter().map(|v| Vec3::from(*v)).collect()
             } else {
@@ -233,7 +237,7 @@ fn update_trails(
                 }
             }
         } else {
-            trail.0.push(body.position);
+            trail.0.enqueue(body.position);
             polylines.get_mut(&polyline.0).unwrap().vertices =
                 trail.0.iter().map(|v| Vec3::from(*v)).collect()
         }

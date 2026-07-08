@@ -2,7 +2,7 @@ use crate::material::PolylineMaterialHandle;
 use bevy::{
     camera::{self, visibility::VisibilityClass},
     ecs::{
-        query::ROQueryItem,
+        query::{QueryItem, ROQueryItem},
         system::{
             lifetimeless::{Read, SRes},
             SystemParamItem,
@@ -12,13 +12,18 @@ use bevy::{
     prelude::*,
     reflect::TypePath,
     render::{
-        extract_component::{ComponentUniforms, DynamicUniformIndex, UniformComponentPlugin},
+        camera::PendingQueues,
+        extract_component::{
+            ComponentUniforms, DynamicUniformIndex, ExtractComponent, ExtractComponentPlugin,
+            UniformComponentPlugin,
+        },
         render_asset::{PrepareAssetError, RenderAsset, RenderAssetPlugin, RenderAssets},
         render_phase::{PhaseItem, RenderCommand, RenderCommandResult, TrackedRenderPass},
         render_resource::{binding_types::uniform_buffer, *},
         renderer::RenderDevice,
+        sync_component::SyncComponent,
         sync_world::{RenderEntity, SyncToRenderWorld},
-        view::{ViewUniform, ViewUniforms},
+        view::{self, texture_format_from_code, texture_format_to_code, ViewUniform, ViewUniforms},
         Extract, Render, RenderApp, RenderSystems,
     },
 };
@@ -35,11 +40,15 @@ impl Plugin for PolylineBasePlugin {
 pub struct PolylineRenderPlugin;
 impl Plugin for PolylineRenderPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(UniformComponentPlugin::<PolylineUniform>::default());
+        app.add_plugins((
+            ExtractComponentPlugin::<PolylineUniform>::default(),
+            UniformComponentPlugin::<PolylineUniform>::default(),
+        ));
     }
 
     fn finish(&self, app: &mut App) {
         app.sub_app_mut(RenderApp)
+            .init_resource::<PendingPolylineQueues>()
             .init_resource::<PolylinePipeline>()
             .add_systems(ExtractSchedule, extract_polylines)
             .add_systems(
@@ -71,7 +80,7 @@ pub struct Polyline {
 }
 
 #[derive(Debug, Clone, Default, Component)]
-#[require(SyncToRenderWorld, VisibilityClass)]
+#[require(SyncToRenderWorld, VisibilityClass, Transform, Visibility)]
 #[component(on_add = camera::visibility::add_visibility_class::<PolylineHandle>)]
 pub struct PolylineHandle(pub Handle<Polyline>);
 
@@ -105,11 +114,36 @@ pub struct PolylineUniform {
     pub transform: Mat4,
 }
 
+impl SyncComponent for PolylineUniform {
+    type Target = Self;
+}
+
 /// The GPU-representation of a [`Polyline`]
 #[derive(Debug, Clone)]
 pub struct GpuPolyline {
     pub vertex_buffer: Buffer,
     pub vertex_count: u32,
+}
+
+impl ExtractComponent for PolylineUniform {
+    type QueryData = (
+        &'static GlobalTransform,
+        &'static InheritedVisibility,
+        &'static ViewVisibility,
+    );
+    type QueryFilter = With<PolylineHandle>;
+    type Out = PolylineUniform;
+
+    fn extract_component(
+        (transform, inherited_visibility, view_visibility): QueryItem<'_, '_, Self::QueryData>,
+    ) -> Option<Self::Out> {
+        if !inherited_visibility.get() || !view_visibility.get() {
+            return None;
+        }
+        Some(PolylineUniform {
+            transform: transform.to_matrix(),
+        })
+    }
 }
 
 pub fn extract_polylines(
@@ -120,28 +154,27 @@ pub fn extract_polylines(
             RenderEntity,
             &InheritedVisibility,
             &ViewVisibility,
-            &GlobalTransform,
             &PolylineHandle,
         )>,
     >,
 ) {
     let mut values = Vec::with_capacity(*previous_len);
-    for (entity, inherited_visibility, view_visibility, transform, handle) in query.iter() {
+    for (entity, inherited_visibility, view_visibility, handle) in query.iter() {
         if !inherited_visibility.get() || !view_visibility.get() {
             continue;
         }
-        let transform = transform.to_matrix();
         values.push((
             entity,
-            (
-                PolylineHandle(handle.0.clone()),
-                PolylineUniform { transform },
-            ),
+            (PolylineHandle(handle.0.clone()),),
+            // PolylineUniform is now handled by ExtractComponentPlugin
         ));
     }
     *previous_len = values.len();
     commands.try_insert_batch(values);
 }
+
+#[derive(Default, Deref, DerefMut, Resource)]
+pub struct PendingPolylineQueues(pub PendingQueues);
 
 #[derive(Clone, Resource)]
 pub struct PolylinePipeline {
@@ -205,10 +238,7 @@ impl SpecializedRenderPipeline for PolylinePipeline {
             depth_write_enabled = true;
         }
 
-        let format = match key.contains(PolylinePipelineKey::HDR) {
-            true => bevy::render::view::ViewTarget::TEXTURE_FORMAT_HDR,
-            false => TextureFormat::bevy_default(),
-        };
+        let format = key.target_format();
 
         let mut vertex_layout = VertexBufferLayout {
             step_mode: VertexStepMode::Instance,
@@ -252,8 +282,8 @@ impl SpecializedRenderPipeline for PolylinePipeline {
             },
             depth_stencil: Some(DepthStencilState {
                 format: TextureFormat::Depth32Float,
-                depth_write_enabled,
-                depth_compare: CompareFunction::Greater,
+                depth_write_enabled: Some(depth_write_enabled),
+                depth_compare: Some(CompareFunction::Greater),
                 stencil: StencilState {
                     front: StencilFaceState::IGNORE,
                     back: StencilFaceState::IGNORE,
@@ -272,8 +302,8 @@ impl SpecializedRenderPipeline for PolylinePipeline {
                 alpha_to_coverage_enabled: false,
             },
             label: Some(label),
-            push_constant_ranges: vec![],
             zero_initialize_workgroup_memory: true,
+            ..default()
         }
     }
 }
@@ -283,22 +313,25 @@ bitflags::bitflags! {
     #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Clone, Copy)]
     // NOTE: Apparently quadro drivers support up to 64x MSAA.
     // MSAA uses the highest 3 bits for the MSAA log2(sample count) to support up to 128x MSAA.
-    pub struct PolylinePipelineKey: u32 {
+    pub struct PolylinePipelineKey: u64 {
         const NONE = 0;
         const PERSPECTIVE = (1 << 0);
         const TRANSPARENT_MAIN_PASS = (1 << 1);
-        const HDR = (1 << 2);
         const MSAA_RESERVED_BITS = Self::MSAA_MASK_BITS << Self::MSAA_SHIFT_BITS;
     }
 }
 
 impl PolylinePipelineKey {
-    const MSAA_MASK_BITS: u32 = 0b111;
-    const MSAA_SHIFT_BITS: u32 = 32 - Self::MSAA_MASK_BITS.count_ones();
+    const MSAA_MASK_BITS: u64 = 0b111;
+    const MSAA_SHIFT_BITS: u64 = 64 - Self::MSAA_MASK_BITS.count_ones() as u64;
+
+    const COLOR_TARGET_FORMAT_MASK_BITS: u64 = view::COLOR_TARGET_FORMAT_MASK_BITS as u64;
+    const COLOR_TARGET_FORMAT_SHIFT_BITS: u64 =
+        Self::MSAA_SHIFT_BITS - Self::COLOR_TARGET_FORMAT_MASK_BITS.count_ones() as u64;
 
     pub fn from_msaa_samples(msaa_samples: u32) -> Self {
         let msaa_bits =
-            (msaa_samples.trailing_zeros() & Self::MSAA_MASK_BITS) << Self::MSAA_SHIFT_BITS;
+            (msaa_samples.trailing_zeros() as u64 & Self::MSAA_MASK_BITS) << Self::MSAA_SHIFT_BITS;
         Self::from_bits_retain(msaa_bits)
     }
 
@@ -306,12 +339,23 @@ impl PolylinePipelineKey {
         1 << ((self.bits() >> Self::MSAA_SHIFT_BITS) & Self::MSAA_MASK_BITS)
     }
 
-    pub fn from_hdr(hdr: bool) -> Self {
-        if hdr {
-            PolylinePipelineKey::HDR
-        } else {
-            PolylinePipelineKey::NONE
-        }
+    /// Create a pipeline key from the view's color target format.
+    #[inline]
+    pub fn from_target_format(format: TextureFormat) -> Self {
+        let code = texture_format_to_code(format)
+            .expect("Texture format is not supported by the pipeline") as u64;
+        Self::from_bits_retain(
+            (code & Self::COLOR_TARGET_FORMAT_MASK_BITS) << Self::COLOR_TARGET_FORMAT_SHIFT_BITS,
+        )
+    }
+
+    /// Color target format of the main pass for this pipeline key.
+    #[inline]
+    pub fn target_format(&self) -> TextureFormat {
+        let code = ((self.bits() >> Self::COLOR_TARGET_FORMAT_SHIFT_BITS)
+            & Self::COLOR_TARGET_FORMAT_MASK_BITS) as u8;
+        texture_format_from_code(code)
+            .expect("Unknown bits in `COLOR_TARGET_FORMAT_MASK_BITS` of the pipeline key")
     }
 }
 
