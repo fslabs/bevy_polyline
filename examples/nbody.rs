@@ -1,11 +1,11 @@
 use std::f32::consts::PI;
 
 use bevy::{
+    camera::Hdr,
     core_pipeline::tonemapping::Tonemapping,
     diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
     math::Vec3A,
     prelude::*,
-    render::view::Hdr,
 };
 use bevy_polyline::prelude::*;
 use bevy_post_process::bloom::Bloom;

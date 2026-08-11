@@ -1,4 +1,4 @@
-use bevy::{color::palettes::css::RED, prelude::*, render::view::Hdr};
+use bevy::{camera::Hdr, color::palettes::css::RED, prelude::*};
 use bevy_polyline::prelude::*;
 
 fn main() {

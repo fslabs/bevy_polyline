@@ -1,11 +1,14 @@
 use crate::polyline::{
-    DrawPolyline, PolylineHandle, PolylinePipeline, PolylinePipelineKey, PolylineUniform,
-    PolylineViewBindGroup, SetPolylineBindGroup,
+    DrawPolyline, PendingPolylineQueues, PolylineHandle, PolylinePipeline, PolylinePipelineKey,
+    PolylineUniform, PolylineViewBindGroup, SetPolylineBindGroup,
 };
 
 use bevy::{
     core_pipeline::{
-        core_3d::{AlphaMask3d, Opaque3d, Opaque3dBatchSetKey, Opaque3dBinKey, Transparent3d},
+        core_3d::{
+            AlphaMask3d, Opaque3d, Opaque3dBatchSetKey, Opaque3dBinKey, Transparent3d,
+            TransparentSortingInfo3d,
+        },
         prepass::{OpaqueNoLightmap3dBatchSetKey, OpaqueNoLightmap3dBinKey},
     },
     ecs::{
@@ -18,6 +21,7 @@ use bevy::{
     },
     prelude::*,
     render::{
+        camera::DirtySpecializations,
         extract_component::{ExtractComponent, ExtractComponentPlugin},
         render_asset::{PrepareAssetError, RenderAsset, RenderAssetPlugin, RenderAssets},
         render_phase::*,
@@ -288,6 +292,8 @@ pub fn queue_material_polylines(
     pipeline_cache: Res<PipelineCache>,
     render_materials: Res<RenderAssets<GpuPolylineMaterial>>,
     material_meshes: Query<(&PolylineMaterialHandle, &PolylineUniform)>,
+    dirty_specializations: Res<DirtySpecializations>,
+    mut pending_queues: ResMut<PendingPolylineQueues>,
     views: Query<(&ExtractedView, &RenderVisibleEntities, &Msaa)>,
     mut opaque_phases: ResMut<ViewBinnedRenderPhases<Opaque3d>>,
     mut alpha_mask_phases: ResMut<ViewBinnedRenderPhases<AlphaMask3d>>,
@@ -303,38 +309,62 @@ pub fn queue_material_polylines(
         .id::<DrawPolylineMaterial>();
 
     for (view, visible_entities, msaa) in &views {
+        let (Some(opaque_phase), Some(alpha_mask_phase), Some(transparent_phase)) = (
+            opaque_phases.get_mut(&view.retained_view_entity),
+            alpha_mask_phases.get_mut(&view.retained_view_entity),
+            transparent_phases.get_mut(&view.retained_view_entity),
+        ) else {
+            continue;
+        };
+        let Some(visible_polyline_entities) = visible_entities.get::<PolylineHandle>() else {
+            continue;
+        };
+
+        let pending_queue = pending_queues.prepare_for_new_frame(view.retained_view_entity);
+
+        for &entity in dirty_specializations
+            .iter_to_dequeue(view.retained_view_entity, visible_polyline_entities)
+        {
+            opaque_phase.remove(entity);
+            alpha_mask_phase.remove(entity);
+            transparent_phase.remove(Entity::PLACEHOLDER, entity);
+        }
+
         let inverse_view_matrix = view.world_from_view.to_matrix().inverse();
         let inverse_view_row_2 = inverse_view_matrix.row(2);
 
-        let mut polyline_key = PolylinePipelineKey::from_msaa_samples(msaa.samples());
-        polyline_key |= PolylinePipelineKey::from_hdr(view.hdr);
-        for (visible_entity, visible_main_entity) in visible_entities.get::<PolylineHandle>() {
+        let mut shared_polyline_key = PolylinePipelineKey::from_msaa_samples(msaa.samples());
+        shared_polyline_key |= PolylinePipelineKey::from_target_format(view.target_format);
+        for (visible_entity, visible_main_entity) in dirty_specializations.iter_to_queue(
+            view.retained_view_entity,
+            visible_polyline_entities,
+            &pending_queue.prev_frame,
+        ) {
             let Ok((material_handle, polyline_uniform)) = material_meshes.get(*visible_entity)
             else {
+                pending_queue
+                    .current_frame
+                    .insert((*visible_entity, *visible_main_entity));
                 continue;
             };
             let Some(material) = render_materials.get(&material_handle.0) else {
+                pending_queue
+                    .current_frame
+                    .insert((*visible_entity, *visible_main_entity));
                 continue;
             };
-            if material.alpha_mode == AlphaMode::Blend {
-                polyline_key |= PolylinePipelineKey::TRANSPARENT_MAIN_PASS
+            let mut unique_polyline_key = shared_polyline_key;
+            if matches!(
+                material.alpha_mode,
+                AlphaMode::Blend | AlphaMode::Premultiplied | AlphaMode::Add | AlphaMode::Multiply
+            ) {
+                shared_polyline_key |= PolylinePipelineKey::TRANSPARENT_MAIN_PASS
             }
             if material.perspective {
-                polyline_key |= PolylinePipelineKey::PERSPECTIVE
+                shared_polyline_key |= PolylinePipelineKey::PERSPECTIVE
             }
             let pipeline_id =
-                pipelines.specialize(&pipeline_cache, &material_pipeline, polyline_key);
-
-            let (Some(opaque_phase), Some(alpha_mask_phase), Some(transparent_phase)) = (
-                opaque_phases.get_mut(&view.retained_view_entity),
-                alpha_mask_phases.get_mut(&view.retained_view_entity),
-                transparent_phases.get_mut(&view.retained_view_entity),
-            ) else {
-                continue;
-            };
-
-            let this_tick = next_tick.get() + 1;
-            next_tick.set(this_tick);
+                pipelines.specialize(&pipeline_cache, &material_pipeline, shared_polyline_key);
 
             match material.alpha_mode {
                 AlphaMode::Opaque => {
@@ -344,8 +374,7 @@ pub fn queue_material_polylines(
                             draw_function: draw_opaque,
                             material_bind_group_index: None,
                             lightmap_slab: None,
-                            vertex_slab: default(),
-                            index_slab: None,
+                            slabs: default(),
                         },
                         Opaque3dBinKey {
                             // The draw command doesn't use a mesh handle so we don't need an `asset_id`
@@ -354,7 +383,6 @@ pub fn queue_material_polylines(
                         (*visible_entity, *visible_main_entity),
                         InputUniformIndex::default(),
                         BinnedRenderPhaseType::NonMesh,
-                        *next_tick,
                     );
                 }
                 AlphaMode::Mask(_) => {
@@ -363,8 +391,7 @@ pub fn queue_material_polylines(
                             draw_function: draw_alpha_mask,
                             pipeline: pipeline_id,
                             material_bind_group_index: None,
-                            vertex_slab: default(),
-                            index_slab: None,
+                            slabs: default(),
                         },
                         OpaqueNoLightmap3dBinKey {
                             asset_id: AssetId::<Mesh>::invalid().untyped(),
@@ -372,7 +399,6 @@ pub fn queue_material_polylines(
                         (*visible_entity, *visible_main_entity),
                         InputUniformIndex::default(),
                         BinnedRenderPhaseType::NonMesh,
-                        *next_tick,
                     );
                 }
                 AlphaMode::Blend
@@ -382,7 +408,11 @@ pub fn queue_material_polylines(
                     // NOTE: row 2 of the inverse view matrix dotted with column 3 of the model matrix
                     // gives the z component of translation of the mesh in view space
                     let polyline_z = inverse_view_row_2.dot(polyline_uniform.transform.col(3));
-                    transparent_phase.add(Transparent3d {
+                    transparent_phase.add_retained(Transparent3d {
+                        sorting_info: TransparentSortingInfo3d::Sorted {
+                            mesh_center: polyline_uniform.transform.col(3).truncate(),
+                            depth_bias: 0.0,
+                        },
                         entity: (*visible_entity, *visible_main_entity),
                         draw_function: draw_transparent,
                         pipeline: pipeline_id,
