@@ -8,14 +8,14 @@
 
 [![crates.io](https://img.shields.io/crates/v/bevy_polyline)](https://crates.io/crates/bevy_polyline)
 [![docs.rs](https://docs.rs/bevy_polyline/badge.svg)](https://docs.rs/bevy_polyline)
-[![CI](https://github.com/ForesightMiningSoftwareCorporation/bevy_polyline/workflows/CI/badge.svg?branch=main)](https://github.com/ForesightMiningSoftwareCorporation/bevy_polyline/actions?query=workflow%3A%22CI%22+branch%3Amain)
+[![CI](https://github.com/fslabs/bevy_polyline/workflows/CI/badge.svg?branch=main)](https://github.com/fslabs/bevy_polyline/actions?query=workflow%3A%22CI%22+branch%3Amain)
 [![Bevy tracking](https://img.shields.io/badge/Bevy%20tracking-main-lightblue)](https://github.com/bevyengine/bevy/blob/main/docs/plugins_guidelines.md#main-branch-tracking)
 
 </div>
 
 ## About
 
-Bevy Polyline is a plugin for [Bevy Engine](https://bevyengine.org/) that adds instanced rendering of `Polyline`s. The plugin comes courtesy of Foresight Mining Software Corporation who sponsor its creation and maintenance. Special thanks to [mtsr](https://github.com/mtsr) for the initial implementation of this plugin.
+Bevy Polyline is a plugin for [Bevy Engine](https://bevyengine.org/) that adds instanced rendering of `Polyline`s. The plugin comes courtesy of Foresight Spatial Labs who sponsor its creation and maintenance. Special thanks to [mtsr](https://github.com/mtsr) for the initial implementation of this plugin.
 
 ### Implementation
 

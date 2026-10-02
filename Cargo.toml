@@ -4,14 +4,14 @@ name = "bevy_polyline"
 version = "0.14.1"
 description = "Polyline Rendering for Bevy"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/ForesightMiningSoftwareCorporation/bevy_polyline"
-homepage = "https://github.com/ForesightMiningSoftwareCorporation/bevy_polyline"
+repository = "https://github.com/fslabs/bevy_polyline"
+homepage = "https://github.com/fslabs/bevy_polyline"
 documentation = "https://docs.rs/bevy_polyline"
 readme = "README.md"
 keywords = ["bevy", "gamedev", "polyline", "graphics"]
 categories = ["rendering", "game-development"]
 authors = [
-    "Foresight Mining Software Corporation",
+    "Foresight Spatial Labs",
     "Jonas Matser",
     "Aevyrie Roessler",
 ]
