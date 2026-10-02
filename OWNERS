@@ -1,0 +1,9 @@
+filters:
+  ".*":
+    approvers:
+    - aevyrie
+    - IceSentry
+    - mwbryant
+    - JulianRuiseco
+    - sebcrozet
+    - loispostula
