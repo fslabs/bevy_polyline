@@ -39,7 +39,10 @@ impl Plugin for PolylineRenderPlugin {
     }
 
     fn finish(&self, app: &mut App) {
-        app.sub_app_mut(RenderApp)
+        let Some(render_app) = app.get_sub_app_mut(RenderApp) else {
+            return;
+        };
+        render_app
             .init_resource::<PolylinePipeline>()
             .add_systems(ExtractSchedule, extract_polylines)
             .add_systems(
